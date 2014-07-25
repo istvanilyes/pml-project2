@@ -1,0 +1,109 @@
+Practical Machine Learning
+===============================
+
+*Course Project Write-up*
+
+Statistical programm: R version 3.0.2; Packages: caret, randomForest     
+Platform: x86_64-w64-mingw32/x64 (64-bit)
+
+### Data
+[Human Activity Recognition](http://groupware.les.inf.puc-rio.br/har) data has been used for this project. The data was created by [Velloso et. al., 2013](http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201). Data consists of 160 features and 19622 observations.
+
+```{r loading, echo=TRUE, warning=FALSE, results='hide'}
+setwd("C:\\S\\Coursera\\Practical machine learning\\CourseProject")
+training_main <- read.csv("pml-training.csv")
+library(caret)
+library(randomForest)
+```
+
+### Summary
+The purpose of this project was to predict activity quality of weight lifting exercises (classe variable) based on several features. The prediction based on a random forest model (with 1000 trees) I received an accuracy of 98.9% based on cross validation. 
+
+
+### Pre-processing
+- Dropping zero or near zero variables
+- Dropping variables which mainly have missing values (59 features remain)
+- Dropping the name variable, and observation order (remained 57 features remain)
+
+```{r missing, echo=TRUE}
+##new data frame without zero covariates
+nzv <- nearZeroVar(training_main)
+training1 <- training_main[, -nzv]
+##Checking for missing values, new data frame without variables which only contains missing values
+missing <- colSums(is.na(training1))
+training2 <- training1[,missing==0]
+#dropping the first two columns
+training2 <- training2[,3:59]
+```
+
+
+
+- According to [Hall, 1999](http://www.cs.waikato.ac.nz/~mhall/thesis.pdf) which study was cited by [Velloso et. al., 2013](http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201) a "good feature sets contain features that are highly correlated
+with the class, yet uncorrelated with each other." I did not apply his algorithm in this project, but I followed the mentioned rule. First I examined the correlation between features (mainly those next to each other) and got rid of those which had high level of correlation with each other (above 0.65). Second I dropped those features which seemed uncorrelated with the classe variable. This latter I examined manually based on mainly box plots with the classe variable against others. At the end 8 features remained.
+
+
+```{r dropping correlated, echo=TRUE, results='markup', warning=FALSE}
+##transforming variables into numerical
+for (i in 1:56) {
+        if (class(training2[,i])!="cvtd_timestamp") {
+                training2[,i]<- as.numeric(training2[,i])}
+        else {
+             str(training2)}        
+        }
+correlations = matrix (0, nrow=55, ncol =3)
+for (i in 1:55) {
+        cor <- cor(training2[,i], training2[,1+i])
+        correlations[i,1]=cor
+        correlations[i,2]=names(training2[i])
+        correlations[i,3]=names(training2[i+1])
+}
+
+correlations
+corrV <- c("pitch_belt", "yaw_belt", "roll_belt", "accel_belt_y", "magnet_belt_y",
+           "gyros_arm_y", "magnet_arm_y", "magnet_arm_z", "yaw_dumbbell",
+           "gyros_dumbbell_x", "gyros_dumbbell_y", "accel_dumbbell_x",
+           "accel_dumbbell_y", "magnet_dumbbell_x","gyros_forearm_y", "gyros_forearm_z")
+training3 <- training2[,!(names(training2) %in% corrV)]
+```
+
+```{r dropping insignificant features, echo=TRUE, results='hide', warning=FALSE}
+corrV2 <- c("raw_timestamp_part_1", "raw_timestamp_part_2", "gyros_belt_y", "gyros_belt_z", "accel_belt_x",
+  "magnet_belt_x", "magnet_belt_z", "yaw_arm",
+  "pitch_arm", "gyros_arm_x", "accel_arm_y", "gyros_arm_z",
+  "accel_arm_z", "total_accel_dumbbell", "gyros_dumbbell_z",
+  "accel_dumbbell_z", "magnet_dumbbell_y", "magnet_dumbbell_z",
+  "total_accel_forearm", "gyros_forearm_x", "accel_forearm_y",
+  "accel_forearm_z", "magnet_forearm_y", "magnet_forearm_z")
+
+training3 <- training3[,!(names(training3) %in% corrV2)]
+
+corrV3 <- c("cvtd_timestamp", "gyros_belt_x", "roll_arm", "total_accel_arm",
+            "accel_forearm_x", "yaw_forearm", "roll_forearm",
+            "pitch_dumbbell", "roll_dumbbell")
+
+training3 <- training3[,!(names(training3) %in% corrV3)]
+rm(corr, correlations, correlations2, training1, training2)
+rm(classVar, cor, corrV, corrV2, i, missing, nzv, corstarsl)
+```
+
+
+```{r preprocessing, echo=TRUE, warning=FALSE}
+set.seed(23456)
+inTrain <- createDataPartition(y=training3$classe,
+                               p=0.6, list=FALSE)
+train <- training3[inTrain,]
+test  <- training3[-inTrain,]
+```
+
+### Cross-validation
+I partitioned the original training data into train and test sets. Trained the model on the train set and then applied it to the test set. Based on the error rate in the test set, we can have an expectation for the out of sample error. 
+Accuracy on the test set:0.989, with the 95% confidence interval: (0.986, 0.991). From the other perspective we can conclude that the error rate is around 1.1%.
+
+```{r model, echo=TRUE,}
+model_rf <- randomForest(classe~ .,data=train, ntree=1000)
+pred_rf <- predict(model_rf, test)
+```
+
+```{r results, echo=TRUE, results='markup'}
+confusionMatrix(test$classe, pred_rf)
+```
